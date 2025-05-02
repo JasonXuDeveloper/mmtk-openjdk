@@ -37,6 +37,15 @@ ifeq ($(MMTK_RAND_FIELDS), 1)
   endif
 endif
 
+# config_fields
+ifeq ($(MMTK_CONFIG_FIELDS), 1)
+  ifndef GC_FEATURES
+    GC_FEATURES=--features config_fields
+  else
+    GC_FEATURES:=$(strip $(GC_FEATURES))",config_fields"
+  endif
+endif
+
 ifeq ($(MMTK_VO_BIT), 1)
   ifndef GC_FEATURES
     GC_FEATURES=--features vo_bit
