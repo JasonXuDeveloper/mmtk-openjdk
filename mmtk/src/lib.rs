@@ -2,10 +2,12 @@
 extern crate lazy_static;
 #[macro_use]
 extern crate probe;
-
+extern crate yaml_rust;
 use std::collections::HashMap;
 use std::ptr::null_mut;
 use std::sync::Mutex;
+use std::env;
+use yaml_rust::{Yaml, YamlLoader};
 
 use libc::{c_char, c_void, uintptr_t};
 use mmtk::util::alloc::AllocationError;
@@ -119,6 +121,7 @@ pub struct OpenJDK_Upcalls {
     pub schedule_finalizer: extern "C" fn(),
     pub prepare_for_roots_re_scanning: extern "C" fn(),
     pub enqueue_references: extern "C" fn(objects: *const ObjectReference, len: usize),
+    pub symbol_as_c_string: extern "C" fn(symbol: OpaquePointer, buf: *mut c_char, size: usize), 
 }
 
 pub static mut UPCALLS: *const OpenJDK_Upcalls = null_mut();
@@ -160,7 +163,9 @@ impl<const COMPRESSED: bool> VMBinding for OpenJDK<COMPRESSED> {
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 
+use std::io::Read;
 pub static MMTK_INITIALIZED: AtomicBool = AtomicBool::new(false);
+pub static SCAN_ORDER_FILE_LOADED: AtomicBool = AtomicBool::new(false);
 
 lazy_static! {
     pub static ref BUILDER: Mutex<MMTKBuilder> = Mutex::new(MMTKBuilder::new_no_env_vars());
@@ -181,6 +186,24 @@ lazy_static! {
         let ret = mmtk::memory_manager::mmtk_init(&builder);
         MMTK_INITIALIZED.store(true, std::sync::atomic::Ordering::SeqCst);
         *ret
+    };
+    pub static ref SCAN_ORDER_CONFIG: Vec<Yaml> = {
+        assert!(!SCAN_ORDER_FILE_LOADED.load(Ordering::Relaxed));
+        let config_file_name = env::var("SCAN_ORDER_CONFIG_FILE").unwrap_or_default();
+        // If the environment variable is not set, return an empty vector.
+        if config_file_name.is_empty() {
+            return vec![];
+        }
+        // If the file does not exist, return an empty vector.
+        if !std::path::Path::new(&config_file_name).exists() {
+            return vec![];
+        }
+        let mut config_file = std::fs::File::open(config_file_name).unwrap();
+        let mut config_file_content = String::new();
+        config_file.read_to_string(&mut config_file_content).unwrap();
+        let docs = YamlLoader::load_from_str(&config_file_content).unwrap();
+        SCAN_ORDER_FILE_LOADED.store(true, Ordering::Relaxed);
+        docs
     };
 }
 

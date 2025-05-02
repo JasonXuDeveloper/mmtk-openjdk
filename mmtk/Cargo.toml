@@ -29,6 +29,7 @@ memoffset = "0.9.0"
 cfg-if = "1.0"
 probe = "0.5"
 rand = "0.8"
+yaml-rust = "0.4"
 
 # Be very careful to commit any changes to the following mmtk dependency, as our CI scripts (including mmtk-core CI)
 # rely on matching these lines to modify them: e.g. comment out the git dependency and use the local path.
@@ -57,6 +58,9 @@ reversed_fields = []
 
 # Random fields while scanning objects.
 random_fields = []
+
+# Use config to order scanning of fields.
+config_fields = []
 
 # Place the mark bit in the header of objects instead of on the side.
 mark_bit_in_header = []

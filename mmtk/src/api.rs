@@ -117,6 +117,8 @@ pub extern "C" fn openjdk_gc_init(calls: *const OpenJDK_Upcalls) {
     } else {
         lazy_static::initialize(&crate::SINGLETON_UNCOMPRESSED);
     }
+    // Load config
+    lazy_static::initialize(&crate::SCAN_ORDER_CONFIG);
 }
 
 #[no_mangle]
