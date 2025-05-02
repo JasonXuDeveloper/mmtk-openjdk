@@ -28,6 +28,7 @@ atomic = "0.6.0"
 memoffset = "0.9.0"
 cfg-if = "1.0"
 probe = "0.5"
+rand = "0.8"
 
 # Be very careful to commit any changes to the following mmtk dependency, as our CI scripts (including mmtk-core CI)
 # rely on matching these lines to modify them: e.g. comment out the git dependency and use the local path.
@@ -50,6 +51,12 @@ nogc_no_zeroing = ["mmtk/nogc_no_zeroing"]
 # Use the env var MMTK_VO_BIT=1 when building OpenJDK so the fastpath for setting the alloc bit will be compiled in.
 # See README.
 vo_bit = ["mmtk/vo_bit"]
+
+# Reversed fields while scanning objects.
+reversed_fields = []
+
+# Random fields while scanning objects.
+random_fields = []
 
 # Place the mark bit in the header of objects instead of on the side.
 mark_bit_in_header = []

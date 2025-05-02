@@ -7,6 +7,8 @@ use mmtk::util::{Address, ObjectReference};
 use mmtk::vm::SlotVisitor;
 use std::cell::UnsafeCell;
 use std::{mem, slice};
+use rand::seq::SliceRandom;
+use rand::thread_rng;
 
 type S<const COMPRESSED: bool> = OpenJDKSlot<COMPRESSED>;
 
@@ -34,6 +36,7 @@ impl OopIterate for OopMapBlock {
 }
 
 impl OopIterate for InstanceKlass {
+    #[cfg(not(any(feature = "reversed_fields", feature = "random_fields")))]
     fn oop_iterate<const COMPRESSED: bool>(
         &self,
         oop: Oop,
@@ -42,6 +45,32 @@ impl OopIterate for InstanceKlass {
         let oop_maps = self.nonstatic_oop_maps();
         for map in oop_maps {
             map.oop_iterate::<COMPRESSED>(oop, closure)
+        }
+    }
+
+    #[cfg(feature = "reversed_fields")]
+    fn oop_iterate<const COMPRESSED: bool>(
+        &self,
+        oop: Oop,
+        closure: &mut impl SlotVisitor<S<COMPRESSED>>,
+    ) {
+        let oop_maps = self.nonstatic_oop_maps();
+        for map in oop_maps.iter().rev() {
+            map.oop_iterate::<COMPRESSED>(oop, closure)
+        }
+    }
+
+    #[cfg(feature = "random_fields")]
+    fn oop_iterate<const COMPRESSED: bool>(
+        &self,
+        oop: Oop,
+        closure: &mut impl SlotVisitor<S<COMPRESSED>>,
+    ) {
+        let oop_maps = self.nonstatic_oop_maps();
+        let mut indices: Vec<usize> = (0..oop_maps.len()).collect();
+        indices.shuffle(&mut thread_rng());
+        for i in indices {
+            oop_maps[i].oop_iterate::<COMPRESSED>(oop, closure)
         }
     }
 }
