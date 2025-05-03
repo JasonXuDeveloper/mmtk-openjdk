@@ -2,6 +2,8 @@ use crate::OpenJDKSlot;
 
 use super::abi::*;
 use super::UPCALLS;
+use crate::SCAN_ORDER_CONFIG;
+use libc::c_char;
 use mmtk::util::opaque_pointer::*;
 use mmtk::util::{Address, ObjectReference};
 use mmtk::vm::SlotVisitor;
@@ -9,10 +11,7 @@ use rand::seq::SliceRandom;
 use rand::thread_rng;
 use std::cell::UnsafeCell;
 use std::{mem, slice};
-use libc::c_char;
 use yaml_rust::Yaml;
-use std::collections::HashSet;
-use crate::SCAN_ORDER_CONFIG;
 
 type S<const COMPRESSED: bool> = OpenJDKSlot<COMPRESSED>;
 
@@ -25,7 +24,6 @@ trait OopIterate: Sized {
 }
 
 impl OopIterate for OopMapBlock {
-    #[cfg(not(any(feature = "reversed_fields", feature = "random_fields")))]
     fn oop_iterate<const COMPRESSED: bool>(
         &self,
         oop: Oop,
@@ -38,101 +36,67 @@ impl OopIterate for OopMapBlock {
             closure.visit_slot(slot);
         }
     }
-
-    #[cfg(feature = "reversed_fields")]
-    fn oop_iterate<const COMPRESSED: bool>(
-        &self,
-        oop: Oop,
-        closure: &mut impl SlotVisitor<S<COMPRESSED>>,
-    ) {
-        let log_bytes_in_oop = if COMPRESSED { 2 } else { 3 };
-        let start = oop.get_field_address(self.offset);
-        for i in self.count as usize..0 {
-            let slot = (start + (i << log_bytes_in_oop)).into();
-            closure.visit_slot(slot);
-        }
-    }
-
-    #[cfg(feature = "random_fields")]
-    fn oop_iterate<const COMPRESSED: bool>(
-        &self,
-        oop: Oop,
-        closure: &mut impl SlotVisitor<S<COMPRESSED>>,
-    ) {
-        let log_bytes_in_oop = if COMPRESSED { 2 } else { 3 };
-        let start = oop.get_field_address(self.offset);
-        let mut indices: Vec<usize> = (0..self.count as usize).collect();
-        let mut rng = thread_rng();
-        indices.shuffle(&mut rng);
-        for i in indices {
-            let slot = (start + (i << log_bytes_in_oop)).into();
-            closure.visit_slot(slot);
-        }
-    }
 }
 
 impl OopIterate for InstanceKlass {
-    #[cfg(feature = "config_fields")]
     fn oop_iterate<const COMPRESSED: bool>(
         &self,
         oop: Oop,
         closure: &mut impl SlotVisitor<S<COMPRESSED>>,
     ) {
-        // println!("starting to scan {}", Address::from_ref(oop));
-        unsafe {
-            let size: usize = 4096;
-            let mut name: Vec<c_char> = Vec::with_capacity(size);
-            name.set_len(size);
-            let name_ptr = name.as_mut_ptr();
-            ((*UPCALLS).symbol_as_c_string)(self.klass.name, name_ptr, size);
-            let typename = std::ffi::CStr::from_ptr(name_ptr).to_str().unwrap().replace("/", ".");
-            let oop_maps = self.nonstatic_oop_maps();
-            let mut slots = HashSet::new();
-            let mut scan_closure = |slot: S<COMPRESSED>| {
-                slots.insert(slot);
-            };
-            let mut temp_slots = vec![];
-            let yamls = &SCAN_ORDER_CONFIG;
-            if !yamls.is_empty() {
-                let config = &yamls[0]["field-dereference-counts"][typename.as_str()];
-                if let Yaml::Hash(ref field_map) = *config {
-                    for (_, field_val) in field_map {
-                        let offset = field_val["offset"].as_i64().unwrap_or(-1);
-                        if offset == -1 {
-                            break;
+        let mut slots = Vec::new();
+        let mut scan_closure = |slot: S<COMPRESSED>| {
+            slots.push(slot);
+        };
+        let oop_maps = self.nonstatic_oop_maps();
+        for map in oop_maps {
+            map.oop_iterate::<COMPRESSED>(oop, &mut scan_closure);
+        }
+
+        if cfg!(feature = "random_fields") {
+            let mut rng = thread_rng();
+            slots.shuffle(&mut rng);
+        } else if cfg!(feature = "reversed_fields") {
+            slots.reverse();
+        } else if cfg!(feature = "config_fields") {
+            unsafe {
+                let size: usize = 4096;
+                let mut name: Vec<c_char> = Vec::with_capacity(size);
+                name.set_len(size);
+                let name_ptr = name.as_mut_ptr();
+                ((*UPCALLS).symbol_as_c_string)(self.klass.name, name_ptr, size);
+                let typename = std::ffi::CStr::from_ptr(name_ptr)
+                    .to_str()
+                    .unwrap()
+                    .replace("/", ".");
+                let yamls = &SCAN_ORDER_CONFIG;
+                if !yamls.is_empty() {
+                    let config = &yamls[0]["field-dereference-counts"][typename.as_str()];
+                    if let Yaml::Hash(ref field_map) = *config {
+                        let mut temp_slots = vec![];
+                        for (_, field_val) in field_map {
+                            let offset = field_val["offset"].as_i64().unwrap_or(-1);
+                            if offset == -1 {
+                                break;
+                            }
+                            assert!(offset != 0, "offset should not be 0");
+                            let addr = oop.get_field_address(offset as i32);
+                            let s: S<COMPRESSED> = addr.into();
+                            let idx = slots.iter().position(|x| *x == s);
+                            if let Some(i) = idx {
+                                temp_slots.push(slots.remove(i));
+                            }
                         }
-                        assert!(offset != 0, "offset should not be 0");
-                        temp_slots.push(oop.get_field_address(offset as i32));
+                        for slot in temp_slots {
+                            closure.visit_slot(slot);
+                        }
                     }
                 }
             }
-            for map in oop_maps {
-                map.oop_iterate::<COMPRESSED>(oop, &mut scan_closure);
-            }
-            for addr in temp_slots {
-                // println!("oop {}: {} config offset addr: {:?}", Address::from_ref(oop), typename, addr);
-                let s: S<COMPRESSED> = addr.into();
-                if slots.contains(&s) {
-                    slots.remove(&s);
-                    closure.visit_slot(s);
-                }
-            }
-            for slot in slots {
-                closure.visit_slot(slot);
-                // println!("visit addr: {:?}", slot.addr);
-            }
         }
-    }
 
-    #[cfg(not(feature = "config_fields"))]
-    fn oop_iterate<const COMPRESSED: bool>(
-        &self,
-        oop: Oop,
-        closure: &mut impl SlotVisitor<S<COMPRESSED>>,
-    ) {
-        let oop_maps = self.nonstatic_oop_maps();
-        for map in oop_maps {
-            map.oop_iterate::<COMPRESSED>(oop, closure)
+        for slot in slots {
+            closure.visit_slot(slot);
         }
     }
 }
