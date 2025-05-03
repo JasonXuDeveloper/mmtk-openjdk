@@ -37,7 +37,7 @@ yaml-rust = "0.4"
 # - change branch
 # - change repo name
 # But other changes including adding/removing whitespaces in commented lines may break the CI.
-mmtk = { git = "https://github.com/JasonXuDeveloper/mmtk-core", rev = "03a3403defbe2a013aadd39c56231626e8b9d28c" }
+mmtk = { git = "https://github.com/JasonXuDeveloper/mmtk-core", rev = "b0e906d40d3297024060e05b8c994b0c4d42ef01" }
 # Uncomment the following to build locally
 # mmtk = { path = "../../mmtk-core" }
 
