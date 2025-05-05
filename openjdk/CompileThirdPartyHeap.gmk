@@ -46,6 +46,15 @@ ifeq ($(MMTK_CONFIG_FIELDS), 1)
   endif
 endif
 
+# BFS
+ifeq ($(BFS), 1)
+  ifndef GC_FEATURES
+    GC_FEATURES=--features edge_enqueuing
+  else
+    GC_FEATURES:=$(strip $(GC_FEATURES))",edge_enqueuing"
+  endif
+endif
+
 ifeq ($(MMTK_VO_BIT), 1)
   ifndef GC_FEATURES
     GC_FEATURES=--features vo_bit

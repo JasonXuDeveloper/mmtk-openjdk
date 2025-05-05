@@ -37,7 +37,7 @@ yaml-rust = "0.4"
 # - change branch
 # - change repo name
 # But other changes including adding/removing whitespaces in commented lines may break the CI.
-mmtk = { git = "https://github.com/JasonXuDeveloper/mmtk-core", rev = "b0e906d40d3297024060e05b8c994b0c4d42ef01" }
+mmtk = { git = "https://github.com/JasonXuDeveloper/mmtk-core", rev = "7024178a03aa3948abb47d2548ff741a8bc8be8f" }
 # Uncomment the following to build locally
 # mmtk = { path = "../../mmtk-core" }
 
@@ -52,6 +52,9 @@ nogc_no_zeroing = ["mmtk/nogc_no_zeroing"]
 # Use the env var MMTK_VO_BIT=1 when building OpenJDK so the fastpath for setting the alloc bit will be compiled in.
 # See README.
 vo_bit = ["mmtk/vo_bit"]
+
+# BFS when enabled
+edge_enqueuing = ["mmtk/edge_enqueuing"]
 
 # Reversed fields while scanning objects.
 reversed_fields = []
